@@ -6,6 +6,7 @@ from copy import deepcopy
 
 import sqlglot.expressions as sge
 from sqlglot import transforms
+from sqlglot import generator
 from sqlglot.dialects import (
     TSQL,
     ClickHouse,
@@ -28,7 +29,7 @@ from sqlglot.dialects.dialect import (
     timestrtotime_sql,
     datestrtodate_sql
 )
-from sqlglot.helper import find_new_name, seq_get
+from sqlglot.helper import find_new_name, seq_get, apply_index_offset
 
 ClickHouse.Generator.TRANSFORMS |= {
     sge.ArraySize: rename_func("length"),
@@ -611,6 +612,15 @@ class E6data(MySQL):
             else:
                 return ""
 
+        def _to_int(self, expression: sge.Expression) -> sge.Expression:
+            if not expression.type:
+                from sqlglot.optimizer.annotate_types import annotate_types
+
+                annotate_types(expression)
+            if expression.type and expression.type.this not in sge.DataType.INTEGER_TYPES:
+                return sge.cast(expression, to=sge.DataType.Type.BIGINT)
+            return expression
+
         UNSIGNED_TYPE_MAPPING = {
             sge.DataType.Type.UBIGINT: "BIGINT",
             sge.DataType.Type.UINT: "INT",
@@ -678,7 +688,7 @@ class E6data(MySQL):
             sge.DateAdd: lambda self, e: self.func(
                 "DATE_ADD",
                 unit_to_str(e),
-                _to_int(e.expression),
+                self._to_int(e.expression),
                 e.this,
             ),
             sge.DateDiff: lambda self, e: self.func(
@@ -751,7 +761,7 @@ class E6data(MySQL):
             sge.TsOrDsAdd: lambda self, e: self.func(
                 "DATE_ADD",
                 unit_to_str(e),
-                _to_int(e.expression),
+                self._to_int(e.expression),
                 e.this,
             ),
             sge.TsOrDsDiff: lambda self, e: self.func(
