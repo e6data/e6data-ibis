@@ -3,11 +3,14 @@ from __future__ import annotations
 import string
 from public import public
 
+from ibis.backends.sql.compiler import NULL, STAR, SQLGlotCompiler
 from ibis.backends.mysql.compiler import MySQLCompiler
 from ibis.backends.sql.datatypes import E6DataType
 from ibis.backends.sql.dialects import E6data
 from ibis.common.patterns import replace
 from ibis.expr.rewrites import p
+import sqlglot.expressions as sge
+
 
 
 @replace(p.Limit)
@@ -29,8 +32,11 @@ def rewrite_limit(_, **kwargs):
 
 
 @public
-class E6DataCompiler(MySQLCompiler):
+class E6DataCompiler(SQLGlotCompiler):
     __slots__ = ()
 
     dialect = E6data
     type_mapper = E6DataType
+
+    def visit_Equals(self, op, *, left, right):
+        return sge.EQ(this=left, expression=right)
