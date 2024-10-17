@@ -37,6 +37,3 @@ class E6DataCompiler(SQLGlotCompiler):
 
     dialect = E6data
     type_mapper = E6DataType
-
-    def visit_Equals(self, op, *, left, right):
-        return sge.EQ(this=left, expression=right)
