@@ -446,7 +446,15 @@ Trino.Generator.TRANSFORMS |= {
 class E6data(MySQL):
     class Tokenizer(MySQL.Tokenizer):
         IDENTIFIERS = ['"']
-    class Generator(MySQL.Generator):
+
+    class Generator(generator.Generator):
+        EXTRACT_ALLOWS_QUOTES = False
+        NVL2_SUPPORTED = True
+        LAST_DAY_SUPPORTS_DATE_PART = False
+        INTERVAL_ALLOWS_PLURAL_FORM = False
+        NULL_ORDERING_SUPPORTED = None
+        SUPPORTS_TABLE_ALIAS_COLUMNS = False
+
         def unnest_sql(self, expression: sge.Explode) -> str:
             # Extract array expressions
             array_expr = expression.args.get("expressions")
@@ -480,6 +488,62 @@ class E6data(MySQL):
             expression_sql = self.sql(expression, "expression")
             extract_str = f"EXTRACT({unit} FROM {expression_sql})"
             return extract_str
+
+        def ordered_sql(self, expression: sge.Ordered) -> str:
+            """
+            Custom override for the `ordered_sql` method in the E6 dialect.
+
+            Original Purpose:
+            -----------------
+            In the base `sqlglot` generator, the `ordered_sql` method is responsible for generating the SQL
+            for `ORDER BY` clauses, including handling NULL ordering (`NULLS FIRST` or `NULLS LAST`) and sorting
+            directions (`ASC`, `DESC`). If null ordering is not supported in a dialect, the base method adds a
+            fallback "CASE WHEN" logic to simulate the desired behavior.
+
+            However, this fallback logic introduces a `CASE WHEN` clause to handle NULLs, which is often
+            unnecessary and can clutter the final query.
+
+            Purpose of This Override:
+            -------------------------
+            In the E6 dialect, we do not want this "CASE WHEN" fallback logic or explicit null ordering
+            like `NULLS FIRST` or `NULLS LAST`. The goal is to keep the `ORDER BY` clause simple and
+            direct without any additional handling for NULL values. Thus, we are overriding the `ordered_sql`
+            method to remove the null ordering logic and simplify the output.
+
+            Args:
+                expression: The `Ordered` expression that contains the column, order direction, and null ordering.
+
+            Returns:
+                str: The SQL string for the `ORDER BY` clause in the E6 dialect.
+            """
+
+            # Get the sorting direction (ASC/DESC) based on the 'desc' argument in the expression
+            desc = expression.args.get("desc")
+            if desc:
+                sort_order = " DESC"
+            elif desc is None:
+                sort_order = " "
+            else:
+                sort_order = " ASC"
+
+            # Check if the expression has an explicit NULL ordering (NULLS FIRST/LAST)
+            nulls_first = expression.args.get("nulls_first")
+            nulls_sort_change = ""
+
+            # Only add NULLS FIRST/LAST if explicitly supported by the dialect
+            # Here, NULL_ORDERING_SUPPORTED is False, so we omit null handling altogether
+            if self.NULL_ORDERING_SUPPORTED:
+                if nulls_first:
+                    nulls_sort_change = " NULLS FIRST"
+                else:
+                    nulls_sort_change = " NULLS LAST"
+
+            # Generate the SQL for the expression (usually the column or expression being ordered)
+            this = self.sql(expression, "this")
+
+            # Return the simple ORDER BY clause without any fallback null ordering logic
+            return f"{this}{sort_order}{nulls_sort_change}"
+
 
         def generateseries_sql(self, expression: sge.GenerateSeries) -> str:
             start = expression.args["start"]
